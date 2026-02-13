@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG Pipeline: Полный цикл</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    :root {
+      /* Palette */
+      --bg-dark: #030712;
+      --bg-card: rgba(17, 24, 39, 0.7);
+      --bg-card-hover: rgba(31, 41, 55, 0.9);
+      
+      --primary: #3b82f6; 
+      --accent: #06b6d4;  
+      --highlight: #f472b6; 
+      
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      
+      --border: rgba(255, 255, 255, 0.1);
+      --glow: 0 0 25px rgba(6, 182, 212, 0.2);
+      
+      --nav-height: 100px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.12), transparent 30%),
+        radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.12), transparent 30%);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* --- SCROLL CONTAINER --- */
+    main {
+      height: 100vh;
+      overflow-y: scroll;
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+      position: relative;
+    }
+
+    /* --- METRO NAVIGATION --- */
+    .metro-nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: var(--nav-height);
+      background: rgba(3, 7, 18, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .metro-track {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 90%;
+      max-width: 1100px;
+    }
+
+    .metro-track::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: #1e293b;
+      transform: translateY(-50%);
+      z-index: 0;
+    }
+
+    .metro-progress {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 0%; 
+      height: 2px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      transform: translateY(-50%);
+      z-index: 1;
+      transition: width 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      box-shadow: 0 0 15px var(--accent);
+    }
+
+    .metro-station {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      opacity: 0.4;
+      transition: all 0.4s ease;
+      background: var(--bg-dark); 
+      padding: 0 15px;
+    }
+
+    .metro-station.active, .metro-station.passed {
+      opacity: 1;
+    }
+
+    .metro-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #1e293b;
+      border: 2px solid #334155;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      margin-bottom: 8px;
+    }
+
+    .metro-station.passed .metro-dot {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .metro-station.active .metro-dot {
+      background: var(--bg-dark);
+      border-color: var(--accent);
+      transform: scale(1.6);
+      box-shadow: 0 0 20px var(--accent);
+    }
+
+    .metro-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+    }
+
+    .metro-station.active .metro-label {
+      color: var(--accent);
+    }
+
+    /* --- SLIDE STYLES --- */
+    .slide {
+      height: 100vh;
+      width: 100%;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 0 5%;
+      position: relative;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 800;
+      line-height: 1.1;
+      background: linear-gradient(to bottom right, #ffffff, #64748b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 24px;
+    }
+
+    h2 {
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    
+    h2 i { color: var(--accent); }
+
+    p.lead {
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: var(--text-muted);
+      max-width: 750px;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    /* --- FLOWCHARTS / CARDS --- */
+    .flow-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 30px;
+    }
+
+    .flow-step {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    .flow-step:hover {
+      transform: translateY(-8px);
+      background: var(--bg-card-hover);
+      border-color: rgba(6, 182, 212, 0.4);
+      box-shadow: var(--glow);
+    }
+
+    .step-badge {
+      display: inline-block;
+      align-self: flex-start;
+      background: rgba(6, 182, 212, 0.1);
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      border: 1px solid rgba(6, 182, 212, 0.2);
+      text-transform: uppercase;
+    }
+
+    .step-icon {
+      font-size: 2.2rem;
+      color: #fff;
+    }
+
+    .step-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .step-desc {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* --- LAYOUTS --- */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .bento-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 30px;
+      border-radius: 20px;
+      transition: 0.3s ease;
+    }
+    .bento-item.main {
+      grid-column: span 3;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(6, 182, 212, 0.05));
+      border-color: rgba(6, 182, 212, 0.3);
+      text-align: center;
+    }
+    
+    .split-view {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+    .split-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px;
+    }
+
+    .chat-bubble {
+      background: #1e293b;
+      padding: 24px 30px;
+      border-radius: 24px 24px 24px 0;
+      margin-bottom: 25px;
+      position: relative;
+      border: 1px solid var(--border);
+      font-size: 1.1rem;
+      color: #fff;
+      box-shadow: 10px 10px 30px rgba(0,0,0,0.2);
+    }
+    .chat-bubble::before {
+      content: 'User Input';
+      position: absolute;
+      top: -25px;
+      left: 0;
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono';
+      color: var(--accent);
+    }
+
+    /* --- ANIMATIONS --- */
+    .reveal {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .active-slide .reveal {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
+    .delay-1 { transition-delay: 0.1s; }
+    .delay-2 { transition-delay: 0.2s; }
+    .delay-3 { transition-delay: 0.3s; }
+
+    @media (max-width: 850px) {
+      .metro-label { display: none; }
+      .split-view { grid-template-columns: 1fr; }
+      .bento-grid { grid-template-columns: 1fr; }
+      .bento-item.main { grid-column: span 1; }
+      .flow-container { grid-template-columns: 1fr; }
+      .slide { padding-top: 120px; height: auto; min-height: 100vh; scroll-snap-align: none; }
+      main { scroll-snap-type: none; }
+    }
+
+    /* --- PRINT SUPPORT --- */
+    @media print {
+      @page {
+        size: landscape;
+        margin: 0;
+      }
+      
+      body {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background-color: var(--bg-dark) !important;
+        height: auto !important;
+        overflow: visible !important;
+      }
+
+      .metro-nav {
+        display: none !important;
+      }
+
+      main {
+        height: auto !important;
+        overflow: visible !important;
+        display: block !important;
+        scroll-snap-type: none !important;
+      }
+
+      .slide {
+        height: 100vh !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        scroll-snap-align: none !important;
+        display: flex !important;
+        opacity: 1 !important;
+        print-color-adjust: exact !important;
+        background: var(--bg-dark) !important; /* Ensure background is dark */
+      }
+
+      /* Force animations to final state */
+      .reveal {
+        opacity: 1 !important;
+        transform: none !important;
+        transition: none !important;
+      }
+      
+      .active-slide .reveal {
+        transform: none !important;
+      }
+      
+      /* Ensure text is visible against dark background if browser tries to save ink */
+      * {
+        color-adjust: exact !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="metro-nav">
+    <div class="metro-track">
+      <div class="metro-progress" id="metroProgress"></div>
+      
+      <div class="metro-station active" onclick="scrollToGroup('start')">
+        <div class="metro-dot"></div>
+        <span class="metro-label">Старт</span>
+      </div>
+      <div class="metro-station" onclick="scrollToGroup('prep')">
+        <div class="metro-dot"></div>
+        <span class="metro-label">Подготовка</span>
+      </div>
+      <div class="metro-station" onclick="scrollToGroup('process')">
+        <div class="metro-dot"></div>
+        <span class="metro-label">Анализ</span>
+      </div>
+      <div class="metro-station" onclick="scrollToGroup('search')">
+        <div class="metro-dot"></div>
+        <span class="metro-label">Поиск</span>
+      </div>
+      <div class="metro-station" onclick="scrollToGroup('result')">
+        <div class="metro-dot"></div>
+        <span class="metro-label">Ответ</span>
+      </div>
+    </div>
+  </nav>
+
+  <main id="scroller">
+
+    <!-- 1. INTRO (gemini_doc.html) -->
+    <section class="slide" data-group="start">
+      <div class="container reveal">
+        <div class="step-badge" style="margin-bottom: 20px;">RAG ARCHITECTURE</div>
+        <h1>Как бот отвечает <br>на сложные вопросы?</h1>
+        <p class="lead">Визуализация пути от пользовательского сообщения до умного ответа. Как система "думает", ищет и формулирует мысли.</p>
+        
+        <div style="margin-top: 40px; display: flex; gap: 24px; color: var(--text-muted); font-size: 0.9rem; font-weight: 600;">
+          <span><i class="fa-solid fa-chevron-down" style="color: var(--accent)"></i> Листайте ниже</span>
+          <span><i class="fa-solid fa-code-branch" style="color: var(--highlight)"></i> Smart Pipeline</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. MAP (gemini_doc copy.html) -->
+    <section class="slide" data-group="start">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-compass"></i> Общая архитектура</h2>
+          <p class="lead">Весь процесс — это высокоскоростная магистраль данных, соединяющая вопрос пользователя и базу знаний.</p>
+        </div>
+        
+        <div class="bento-grid reveal delay-1">
+          <div class="bento-item main">
+            <h3 style="color: var(--accent); margin-bottom: 8px;">Retrieval-Augmented Generation</h3>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">Технология, дополняющая знания модели вашими данными</p>
+          </div>
+          <div class="bento-item">
+            <div class="step-badge">Phase A</div>
+            <h4 style="margin: 12px 0;">Интеграция</h4>
+            <p style="font-size: 0.85rem; color: #64748b;">Создание цифрового слепка ваших документов.</p>
+          </div>
+          <div class="bento-item">
+            <div class="step-badge">Phase B</div>
+            <h4 style="margin: 12px 0;">Извлечение</h4>
+            <p style="font-size: 0.85rem; color: #64748b;">Мгновенный поиск самых релевантных фактов.</p>
+          </div>
+          <div class="bento-item">
+            <div class="step-badge">Phase C</div>
+            <h4 style="margin: 12px 0;">Синтез</h4>
+            <p style="font-size: 0.85rem; color: #64748b;">Объединение фактов в человекочитаемый текст.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. INDEXING - LOAD & CLEAN (gemini_doc copy.html) -->
+    <section class="slide" data-group="prep">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-microchip"></i> Загрузка данных</h2>
+          <p class="lead">Прежде чем отвечать, система должна "переварить" информацию. Это фундамент системы.</p>
+        </div>
+
+        <div class="flow-container reveal delay-1">
+          <div class="flow-step">
+            <div class="step-badge">01. Source</div>
+            <div class="step-icon"><i class="fa-solid fa-file-contract"></i></div>
+            <div class="step-title">Load & Clean</div>
+            <div class="step-desc">Извлечение текста из PDF, таблиц и баз. Удаление шума и лишней разметки.</div>
+          </div>
+          <div class="flow-step">
+            <div class="step-badge">02. Split</div>
+            <div class="step-icon"><i class="fa-solid fa-layer-group"></i></div>
+            <div class="step-title">Chunking</div>
+            <div class="step-desc">Разбиение текста на "смыслы" — небольшие блоки, которые удобно сравнивать.</div>
+          </div>
+          <div class="flow-step">
+            <div class="step-badge">03. Vectors</div>
+            <div class="step-icon"><i class="fa-solid fa-dna"></i></div>
+            <div class="step-title">Embedding</div>
+            <div class="step-desc">Превращение слов в математические векторы в многомерном пространстве.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. INDEXING - 7 QUESTIONS (gemini_doc.html) -->
+    <section class="slide" data-group="prep">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-database"></i> Умная индексация</h2>
+          <p class="lead">Мы не просто сохраняем текст, мы создаем "умную" базу ответов, генерируя вопросы для каждого фрагмента.</p>
+        </div>
+
+        <div class="flow-container reveal delay-1">
+          <div class="flow-step">
+            <div class="step-badge">01. Processing</div>
+            <div class="step-icon"><i class="fa-solid fa-scissors"></i></div>
+            <div class="step-title">Smart Chunking</div>
+            <div class="step-desc">Разрезаем файлы на смысловые чанки по 1000 токенов для точного попадания.</div>
+          </div>
+          <div class="flow-step" style="border-color: var(--highlight);">
+            <div class="step-badge" style="color: var(--highlight);">02. Q-Gen</div>
+            <div class="step-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div class="step-title">7 Вопросов</div>
+            <div class="step-desc">Для каждого чанка LLM создает 7 потенциальных вопросов, которые может задать пользователь.</div>
+          </div>
+          <div class="flow-step">
+            <div class="step-badge">03. Index</div>
+            <div class="step-icon"><i class="fa-solid fa-dna"></i></div>
+            <div class="step-title">Q-Embeddings</div>
+            <div class="step-desc">Ембедятся именно вопросы — так поиск "вопрос-к-вопросу" работает намного точнее.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. ENTRY POINT (gemini_doc.html) -->
+    <section class="slide" data-group="process">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-door-open"></i> Входная точка</h2>
+          <p class="lead">Пользователь что-то написал. Первым делом нужно понять, что с этим делать.</p>
+        </div>
+
+        <div class="split-view reveal delay-1" style="align-items: stretch; margin-top: 40px;">
+          <div style="display: flex; flex-direction: column; justify-content: center;">
+            <div class="chat-bubble">
+              "Привет! Сколько стоит доставка в Казань и какие сроки?"
+            </div>
+            <p class="step-desc" style="padding-right: 20px;">
+              <i class="fa-solid fa-circle-exclamation" style="color: var(--highlight);"></i> 
+              Сырой запрос может быть неточным, с опечатками или слишком сложным.
+            </p>
+          </div>
+          
+          <div class="flow-step" style="border-color: var(--primary); background: rgba(59, 130, 246, 0.1);">
+            <div class="step-badge">АНАЛИЗАТОР</div>
+            <h3 class="step-title">Router (Классификатор)</h3>
+            <p class="step-desc">
+              ИИ решает: это просто <strong>"Привет"</strong> (ответить болталкой) или <strong>вопрос по базе знаний</strong> (запустить поиск)?
+            </p>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <span class="step-badge" style="background: #1e293b;">Chat Mode</span>
+                <span class="step-badge" style="background: var(--primary); color: #fff;">RAG Mode</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. UNDERSTANDING (gemini_doc.html) -->
+    <section class="slide" data-group="process">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-brain"></i> Глубокое понимание</h2>
+          <p class="lead">Если выбран поиск, мы превращаем "кривой" запрос в идеальный ключ для базы знаний.</p>
+        </div>
+
+        <div class="flow-container reveal delay-1">
+          <div class="flow-step">
+            <div class="step-badge">Rewrite</div>
+            <div class="step-title">Улучшение</div>
+            <div class="step-desc">ИИ переписывает вопрос, исправляя ошибки и добавляя важный контекст.</div>
+          </div>
+          <div class="flow-step">
+            <div class="step-badge">Intent</div>
+            <div class="step-title">Тематика</div>
+            <div class="step-desc">Определение темы ("Доставка"), чтобы искать только в нужных разделах базы.</div>
+          </div>
+          <div class="flow-step">
+            <div class="step-badge">Expansion</div>
+            <div class="step-title">Синонимы</div>
+            <div class="step-desc">Генерация вариаций вопроса для максимального охвата при поиске.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  <!-- 7. QUERY REWRITE (Group: Process) -->
+    <section class="slide" data-group="process">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-pen-nib"></i> Улучшение вопроса</h2>
+          <p class="lead">Люди формулируют мысли путано. ИИ переписывает вопрос так, чтобы машине было легче искать.</p>
+        </div>
+
+        <div class="bento-grid reveal delay-1" style="grid-template-columns: 1fr; gap: 10px;">
+            <div class="bento-item" style="border-style: dashed; opacity: 0.6;">
+                "Скока везти до Казани?" (Оригинал)
+            </div>
+            <div style="text-align: center; color: var(--accent);"><i class="fa-solid fa-arrow-down"></i></div>
+            <div class="bento-item" style="background: rgba(6, 182, 212, 0.1); border-color: var(--accent);">
+                <strong>Query Expansion (Расширение):</strong>
+                <ul style="list-style: none; margin-top: 10px; color: var(--text-muted);">
+                    <li>1. "Тарифы на доставку грузов в Казань"</li>
+                    <li>2. "Сроки транспортировки в Республику Татарстан"</li>
+                    <li>3. "Стоимость логистических услуг регион Казань"</li>
+                </ul>
+            </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. SEARCH & RERANK (gemini_doc.html) -->
+    <section class="slide" data-group="search">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-magnifying-glass-chart"></i> Умный поиск</h2>
+          <p class="lead">Мы находим десятки похожих фрагментов, но до ИИ дойдут только самые лучшие.</p>
+        </div>
+
+        <div class="flow-container reveal delay-1">
+          <div class="flow-step">
+            <div class="step-icon" style="color: var(--accent);"><i class="fa-solid fa-bolt"></i></div>
+            <div class="step-title">Retrieval</div>
+            <div class="step-desc">Быстрый поиск Top-20 кандидатов по близости векторов вопросов.</div>
+          </div>
+          <div class="flow-step" style="border-color: var(--highlight);">
+            <div class="step-icon" style="color: var(--highlight);"><i class="fa-solid fa-filter-circle-check"></i></div>
+            <div class="step-title">Reranking</div>
+            <div class="step-desc">Кросс-кодировщик перечитывает Top-20 и выбирает 3 самых точных чанка.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. RERANK (Group: Search) -->
+    <section class="slide" data-group="search">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-list-check"></i> Реранкинг (Rerank)</h2>
+          <p class="lead">Поиск дает количество, Реранкер дает качество. Мы отбираем жемчужины.</p>
+        </div>
+
+        <div class="split-view reveal delay-1">
+            <div class="split-card" style="opacity: 0.5;">
+                <h3><i class="fa-solid fa-layer-group"></i> 10 Кандидатов</h3>
+                <p>Здесь могут быть устаревшие тарифы или просто похожие слова без нужного смысла.</p>
+            </div>
+            <div class="split-card" style="border-color: var(--highlight); box-shadow: 0 0 20px rgba(244, 114, 182, 0.2);">
+                <div class="step-badge" style="color: var(--highlight); border-color: var(--highlight);">SMART FILTER</div>
+                <h3 style="margin-top: 10px;">Топ-3 Лучших</h3>
+                <p>Cross-Encoder модель перечитывает кандидатов и оставляет только те, которые 100% отвечают на вопрос.</p>
+            </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 8. FINAL ANSWER (gemini_doc copy.html) -->
+    <section class="slide" data-group="result">
+      <div class="container">
+        <div class="reveal">
+          <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Рождение ответа</h2>
+          <p class="lead">Финальный аккорд: сборка всех найденных пазлов в один логичный ответ.</p>
+        </div>
+
+        <div class="bento-grid reveal delay-1" style="grid-template-columns: 1fr;">
+          <div class="bento-item" style="font-family: 'JetBrains Mono', monospace; border-style: dashed; font-size: 0.9rem;">
+            <span style="color: #4ade80;">[SYSTEM PROMPT]</span><br>
+            Ответь пользователю, используя только предоставленные факты.<br>
+            <span style="color: var(--accent);">[CONTEXT: Факты о ценах и сроках в Казани...]</span><br>
+            <span style="color: var(--highlight);">[USER: "Сколько стоит доставка в Казань?"]</span>
+          </div>
+          
+          <div class="bento-item main" style="margin-top: 10px; box-shadow: 0 0 30px rgba(59, 130, 246, 0.25);">
+             <h3 style="margin-bottom: 10px;"><i class="fa-solid fa-check-double"></i> Ответ сформирован</h3>
+             <p style="font-size: 1.2rem; color: #fff; line-height: 1.5;">
+               "На основании внутренней базы знаний: доставка в Казань стоит 500 рублей и занимает 3 рабочих дня."
+             </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    const scroller = document.getElementById('scroller');
+    const stations = document.querySelectorAll('.metro-station');
+    const slides = document.querySelectorAll('.slide');
+    const progressBar = document.getElementById('metroProgress');
+
+    const groupMap = { 'start': 0, 'prep': 1, 'process': 2, 'search': 3, 'result': 4 };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('active-slide');
+          const group = entry.target.dataset.group;
+          updateMetro(group);
+        }
+      });
+    }, {
+      root: scroller,
+      threshold: 0.4
+    });
+
+    slides.forEach(slide => observer.observe(slide));
+
+    function updateMetro(groupName) {
+      const activeIndex = groupMap[groupName];
+      if (activeIndex === undefined) return;
+      
+      stations.forEach((station, index) => {
+        station.classList.remove('active', 'passed');
+        if (index < activeIndex) {
+          station.classList.add('passed');
+        } else if (index === activeIndex) {
+          station.classList.add('active');
+        }
+      });
+
+      const percent = (activeIndex / (Object.keys(groupMap).length - 1)) * 100;
+      progressBar.style.width = percent + '%';
+    }
+
+    window.scrollToGroup = function(groupName) {
+      const targetSlide = document.querySelector(`.slide[data-group="${groupName}"]`);
+      if (targetSlide) {
+        targetSlide.scrollIntoView({ behavior: 'smooth' });
+      }
+    };
+
+    window.addEventListener('load', () => {
+      updateMetro('start');
+      slides[0].classList.add('active-slide');
+    });
+  </script>
+</body>
+</html>
